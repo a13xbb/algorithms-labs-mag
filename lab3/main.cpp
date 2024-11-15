@@ -277,27 +277,32 @@ int tabu_search(vector<unordered_set<int>>& neighbours, unordered_set<int>& best
 
     for (int i = 0; i < num_iter; i++) {
         int pushed_flag = false;
+        //move neighborhood
         while (qco.c > qco.q) {
+            int best_vertex = -1;
             for (int i = qco.q; i< qco.c; i++) {
                 int vertex = qco.qco_vec[i];
-                if (!in_tabu_add[vertex]) {
-                    qco.insert_to_clique(vertex);
-
-                    tabu_add.push_back(vertex);
-                    in_tabu_add[vertex] = 1;
-                    pushed_flag = true;
-                    
-                    int popped_vert = tabu_add.front();
-                    tabu_add.pop_front();
-                    if (popped_vert != -1) {
-                        in_tabu_add[popped_vert] = 0;
-                    }
-
-                    break;
+                if (!in_tabu_del[vertex] &&
+                 (best_vertex == -1 ||
+                  neighbours[vertex].size() > neighbours[best_vertex].size())) {
+                    best_vertex = vertex;
                 }
             }
-            if (!pushed_flag) {
+            if (best_vertex == -1) {
                 break;
+            }
+
+            qco.insert_to_clique(best_vertex);
+        
+            if (best_solution.size() <= best_size) {
+                tabu_add.push_back(best_vertex);
+                in_tabu_add[best_vertex] = 1;
+                
+                int popped_vert = tabu_add.front();
+                tabu_add.pop_front();
+                if (popped_vert != -1) {
+                    in_tabu_add[popped_vert] = 0;
+                }
             }
         }
 
@@ -309,21 +314,42 @@ int tabu_search(vector<unordered_set<int>>& neighbours, unordered_set<int>& best
             }
         }
 
-        for (int i = 0; i < qco.q; i++) {
-            int vertex = qco.qco_vec[i];
-            if (!in_tabu_del[vertex]) {
-                qco.remove_from_clique(vertex);
-
-                tabu_del.push_back(vertex);
-                in_tabu_del[vertex] = 1;
-
-                int popped_vert = tabu_del.front();
-                tabu_del.pop_front();
-                if (popped_vert != -1) {
-                    in_tabu_del[popped_vert] = 0;
-                }
-            }
+        //swap 1-1 neighborhood
+        int k_idx = floor(dis(gen) * (qco.q));
+        if (k_idx == qco.q) k_idx--;
+        int k = qco.qco_vec[k_idx];
+        // vector<int> nnk1t;
+        // for (int i = 0; i < neighbours.size(); i++) {
+        //     if (qco.tau[i] == 1 && neighbours[k].find(i) == neighbours[k].end()) {
+        //         nnk1t.push_back(i);
+        //     }
+        // }
+        if (in_tabu_add[k]) continue;
+        qco.remove_from_clique(k);
+        int popped_vert = tabu_del.front();
+        tabu_del.pop_front();
+        if (popped_vert != -1) {
+            in_tabu_del[popped_vert] = 0;
         }
+        tabu_del.push_back(k);
+        in_tabu_del[k] = 1;
+
+
+        // for (int i = 0; i < qco.q; i++) {
+        //     int vertex = qco.qco_vec[i];
+        //     if (!in_tabu_del[vertex]) {
+        //         qco.remove_from_clique(vertex);
+
+        //         tabu_del.push_back(vertex);
+        //         in_tabu_del[vertex] = 1;
+
+        //         int popped_vert = tabu_del.front();
+        //         tabu_del.pop_front();
+        //         if (popped_vert != -1) {
+        //             in_tabu_del[popped_vert] = 0;
+        //         }
+        //     }
+        // }
     }
 
     return best_size;
@@ -361,8 +387,8 @@ int main()
 
         unordered_set<int> clique;
         int best_size = tabu_search(neighbours, clique,
-         floor((float)neighbours.size() * 0.25),
-         floor((float)neighbours.size() * 0.14), 10000);
+         4,
+         2, 30000);
         
         // cout<<best_size<<endl;
         // for (auto it = clique.begin(); it != clique.end(); it++) {
