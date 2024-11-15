@@ -38,11 +38,11 @@ public:
         }
         //считаю tightness для всех вершин
         tau.resize(neighbours.size());
-        for (int i = 0; i < qco_vec.size(); i++) {
+        for (int i = 0; i < neighbours.size(); i++) {
             tau[i] = 0;
             if (clique.find(i) == clique.end()) {
                 for (auto v = clique.begin(); v != clique.end(); ++v) {
-                    if (neighbours[i].find(*v) == neighbours[i].end()) {
+                    if (i != *v && neighbours[i].find(*v) == neighbours[i].end()) {
                         tau[i]++;
                     }
                 }
@@ -259,23 +259,87 @@ unordered_set<int> generate_start_solution(vector<unordered_set<int>>& neighbour
     return clique_members;
 }
 
-int tabu_search(vector<unordered_set<int>>& neighbours, unordered_set<int>& solution,
-                int del_tenure, int add_tenure) {
-    solution = generate_start_solution(neighbours);
-    return solution.size();
+int tabu_search(vector<unordered_set<int>>& neighbours, unordered_set<int>& best_solution,
+                int del_tenure, int add_tenure, int num_iter) {
+    best_solution = generate_start_solution(neighbours);
+    int best_size = best_solution.size();
+    QCO qco = QCO(best_solution, neighbours);
+
+    deque<int> tabu_del, tabu_add;
+    for (int i = 0; i < del_tenure; i++) {
+        tabu_del.push_back(-1);
+    }
+    for (int i = 0; i < add_tenure; i++) {
+        tabu_add.push_back(-1);
+    }
+
+    unordered_map<int, int> in_tabu_del, in_tabu_add;
+
+    for (int i = 0; i < num_iter; i++) {
+        int pushed_flag = false;
+        while (qco.c > qco.q) {
+            for (int i = qco.q; i< qco.c; i++) {
+                int vertex = qco.qco_vec[i];
+                if (!in_tabu_add[vertex]) {
+                    qco.insert_to_clique(vertex);
+
+                    tabu_add.push_back(vertex);
+                    in_tabu_add[vertex] = 1;
+                    pushed_flag = true;
+                    
+                    int popped_vert = tabu_add.front();
+                    tabu_add.pop_front();
+                    if (popped_vert != -1) {
+                        in_tabu_add[popped_vert] = 0;
+                    }
+
+                    break;
+                }
+            }
+            if (!pushed_flag) {
+                break;
+            }
+        }
+
+        if (qco.q > best_size) {
+            best_size = qco.q;
+            best_solution.clear();
+            for (int i = 0; i < qco.q; i++) {
+                best_solution.insert(qco.qco_vec[i]);
+            }
+        }
+
+        for (int i = 0; i < qco.q; i++) {
+            int vertex = qco.qco_vec[i];
+            if (!in_tabu_del[vertex]) {
+                qco.remove_from_clique(vertex);
+
+                tabu_del.push_back(vertex);
+                in_tabu_del[vertex] = 1;
+
+                int popped_vert = tabu_del.front();
+                tabu_del.pop_front();
+                if (popped_vert != -1) {
+                    in_tabu_del[popped_vert] = 0;
+                }
+            }
+        }
+    }
+
+    return best_size;
 }
 
 int main()
 {
     srand(time(0));
-    // vector<string> files = {"brock200_1", "brock200_2", "brock200_3", "brock200_4",
-    // "brock400_1", "brock400_2", "brock400_3", "brock400_4",
-    // "C125.9", "gen200_p0.9_44", "gen200_p0.9_55", "hamming8-4",
-    // "johnson16-2-4", "johnson8-2-4", "keller4", "MANN_a27",
-    // "MANN_a9", "p_hat1000-1", "p_hat1000-2", "p_hat1500-1",
-    // "p_hat300-3", "p_hat500-3", "san1000", "sanr200_0.9", 
-    // "sanr400_0.7"};
-    vector<string> files = {"test"};
+    vector<string> files = {"brock200_1", "brock200_2", "brock200_3", "brock200_4",
+    "brock400_1", "brock400_2", "brock400_3", "brock400_4",
+    "C125.9", "gen200_p0.9_44", "gen200_p0.9_55", "hamming8-4",
+    "johnson16-2-4", "johnson8-2-4", "keller4", "MANN_a27",
+    "MANN_a9", "p_hat1000-1", "p_hat1000-2", "p_hat1500-1",
+    "p_hat300-3", "p_hat500-3", "san1000", "sanr200_0.9", 
+    "sanr400_0.7"};
+    // vector<string> files = {"test"};
     
     ofstream fout("clique.txt");
 
@@ -296,51 +360,37 @@ int main()
         clock_t start = clock();
 
         unordered_set<int> clique;
-        // int best_size = tabu_search(neighbours, clique, 1, 2);
+        int best_size = tabu_search(neighbours, clique,
+         floor((float)neighbours.size() * 0.25),
+         floor((float)neighbours.size() * 0.14), 10000);
+        
+        // cout<<best_size<<endl;
+        // for (auto it = clique.begin(); it != clique.end(); it++) {
+        //     cout<<*it+1<<' ';
+        // }
+        // cout<<endl;
 
-        QCO qco = QCO(clique, neighbours);
+        // QCO qco = QCO(clique, neighbours);
         // cout<<qco.q<<qco.c<<qco.n;
 
-        int vv = 1;
-        qco.insert_to_clique(vv-1);
-        qco.print_clique();
+        // int vv = 1;
+        // qco.insert_to_clique(vv-1);
+        // qco.print_clique();
 
-        vv = 1;
-        qco.remove_from_clique(vv-1);
-        qco.print_clique();
+        // vv = 1;
+        // qco.remove_from_clique(vv-1);
+        // qco.print_clique();
 
-        vv = 4;
-        qco.insert_to_clique(vv-1);
-        qco.print_clique();
+        // vv = 4;
+        // qco.insert_to_clique(vv-1);
+        // qco.print_clique();
 
-        // unordered_set<int> best_clique_members;
-        // int best_size = -1;
-        // int n_iters = 30;
-
-        // for (int i = 0; i < n_iters; i++) {
-        //     unordered_set<int> clique_members;
-        //     int clique_size = find_clique(clique_members, neighbours, "intersection");
-        //     if (clique_size > best_size) {
-        //         best_size = clique_size;
-        //         best_clique_members = clique_members;
-        //     }
-        // }
-
-        // n_iters = 5000;
-
-        // for (int i = 0; i < n_iters; i++) {
-        //     unordered_set<int> clique_members;
-        //     int clique_size = find_clique(clique_members, neighbours, "random");
-        //     if (clique_size > best_size) {
-        //         best_size = clique_size;
-        //         best_clique_members = clique_members;
-        //     }
-        // }
+        
 
         clock_t end = clock();
         
         fout << filename << '\n';
-        // fout << "Clique size: " << best_size << '\n';
+        fout << "Clique size: " << best_size << '\n';
         fout << "Time: "<< std::fixed << double(end - start) / CLOCKS_PER_SEC << "\n\n";
     }
 }
