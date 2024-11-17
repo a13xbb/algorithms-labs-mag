@@ -171,12 +171,12 @@ unordered_set<int> intersection(const unordered_set<int> &set1, const unordered_
 }
 
 int select_random_candidate(const unordered_set<int> &candidates, const vector<unordered_set<int>> &neighbours,
-const vector<double> &probs) {
+const vector<double> &probs, unordered_map<int, int> in_tabu_list = {}) {
     int max_degree = -1;
     int selected_vert = 0;
     for (int vert : candidates) {
         int cur_vert_degree = neighbours[vert].size();
-        if (cur_vert_degree > max_degree) {
+        if (cur_vert_degree > max_degree && !in_tabu_list[vert]) {
             max_degree = cur_vert_degree;
             selected_vert = vert;
         }
@@ -184,12 +184,15 @@ const vector<double> &probs) {
 
     for (int vert : candidates) {
         int diff = max_degree - neighbours[vert].size();
-        if ((diff < probs.size()) && (dis(gen) <= probs[diff])) {
+        if ((diff < probs.size()) && (dis(gen) <= probs[diff]) && (!in_tabu_list[vert])) {
             selected_vert = vert;
             break;
         }
     }
 
+    if (max_degree == -1) {
+        return -1;
+    }
     return selected_vert;
 }
 
@@ -253,106 +256,172 @@ int find_clique(unordered_set<int> &clique_members, vector<unordered_set<int>> &
     return clique_members.size();
 }
 
-unordered_set<int> generate_start_solution(vector<unordered_set<int>>& neighbours) {
-    unordered_set<int> clique_members;
-    find_clique(clique_members, neighbours, "random");
-    return clique_members;
+unordered_set<int> generate_start_solution(vector<unordered_set<int>>& neighbours, int n_iters = 30) {
+    unordered_set<int> best_clique_members;
+    int best_size = -1;
+
+    for (int i = 0; i < n_iters; i++) {
+        unordered_set<int> clique_members;
+        int clique_size = find_clique(clique_members, neighbours, "random");
+        if (clique_size > best_size) {
+            best_size = clique_size;
+            best_clique_members = clique_members;
+        }
+    }
+    return best_clique_members;
+}
+
+void remove_from_clique(int vert, QCO& qco, deque<int>& tabu_deleted, unordered_map<int, int> in_tabu_deleted) {
+    qco.remove_from_clique(vert);
+    tabu_deleted.push_back(vert);
+    in_tabu_deleted[vert] = 1;
+    in_tabu_deleted[tabu_deleted.front()] = 0;
+    tabu_deleted.pop_front();
+}
+
+void insert_to_clique(int vert, QCO& qco, deque<int>& tabu_added, unordered_map<int, int> in_tabu_added) {
+    qco.insert_to_clique(vert);
+    tabu_added.push_back(vert);
+    in_tabu_added[vert] = 1;
+    in_tabu_added[tabu_added.front()] = 0;
+    tabu_added.pop_front();
 }
 
 int tabu_search(vector<unordered_set<int>>& neighbours, unordered_set<int>& best_solution,
-                int del_tenure, int add_tenure, int num_iter) {
-    best_solution = generate_start_solution(neighbours);
+                int del_tenure, int add_tenure, int max_no_improvement_iters, int num_iters) {
+
+    vector<double> probs = {0.7, 0.5, 0.3, 0.2};
+
+    best_solution = generate_start_solution(neighbours, 1);
     int best_size = best_solution.size();
-    QCO qco = QCO(best_solution, neighbours);
 
-    deque<int> tabu_del, tabu_add;
-    for (int i = 0; i < del_tenure; i++) {
-        tabu_del.push_back(-1);
-    }
-    for (int i = 0; i < add_tenure; i++) {
-        tabu_add.push_back(-1);
-    }
+    for (int _ = 0; _ < num_iters; _++) {
 
-    unordered_map<int, int> in_tabu_del, in_tabu_add;
+        unordered_set<int> start_solution = generate_start_solution(neighbours, 1);
+        // best_solution = {0, 1, 2};
+        // return best_size;
+        QCO qco = QCO(start_solution, neighbours);
 
-    for (int i = 0; i < num_iter; i++) {
-        int pushed_flag = false;
-        //move neighborhood
-        while (qco.c > qco.q) {
-            int best_vertex = -1;
-            for (int i = qco.q; i< qco.c; i++) {
-                int vertex = qco.qco_vec[i];
-                if (!in_tabu_del[vertex] &&
-                 (best_vertex == -1 ||
-                  neighbours[vertex].size() > neighbours[best_vertex].size())) {
-                    best_vertex = vertex;
-                }
-            }
-            if (best_vertex == -1) {
-                break;
-            }
-
-            qco.insert_to_clique(best_vertex);
-        
-            if (best_solution.size() <= best_size) {
-                tabu_add.push_back(best_vertex);
-                in_tabu_add[best_vertex] = 1;
-                
-                int popped_vert = tabu_add.front();
-                tabu_add.pop_front();
-                if (popped_vert != -1) {
-                    in_tabu_add[popped_vert] = 0;
-                }
-            }
+        deque<int> tabu_deleted, tabu_added;
+        for (int i = 0; i < del_tenure; i++) {
+            tabu_deleted.push_back(-1);
+        }
+        for (int i = 0; i < add_tenure; i++) {
+            tabu_added.push_back(-1);
         }
 
-        if (qco.q > best_size) {
-            best_size = qco.q;
-            best_solution.clear();
+        unordered_map<int, int> in_tabu_deleted, in_tabu_added;
+
+        int no_improvement_iters = 0;
+        while(no_improvement_iters <= max_no_improvement_iters) {
+            no_improvement_iters++;
+
+            bool moved_or_swapped = false;
+            //move neighborhood
+            while (qco.c > qco.q) {
+                unordered_set<int> candidates;
+                for (int i = qco.q; i < qco.c; i++) {
+                    int vert = qco.qco_vec[i];
+                    candidates.insert(vert);
+                }
+                int new_vert = select_random_candidate(candidates, neighbours, probs);
+                if (new_vert != -1) {
+                    qco.insert_to_clique(new_vert);
+                    moved_or_swapped = true;
+                    if (qco.q > best_size) {
+                        no_improvement_iters = 0;
+                        best_size = qco.q;
+                        best_solution.clear();
+                        for (int i = 0; i < qco.q; i++) {
+                            best_solution.insert(qco.qco_vec[i]);
+                        }
+                    }
+                }
+            }
+
+            //1-2 swap
             for (int i = 0; i < qco.q; i++) {
-                best_solution.insert(qco.qco_vec[i]);
+                int k = qco.qco_vec[i];
+                if (in_tabu_added[k]) continue;
+
+                vector<int> knn;
+                for (int j = qco.c; j < qco.qco_vec.size(); j++) {
+                    int u = qco.qco_vec[j];
+                    if (u != k && neighbours[k].find(u) == neighbours[k].end() && qco.tau[u] == 1) {
+                        knn.push_back(u);
+                    }
+                }
+                if (knn.size() < 2) continue;
+
+                int chosen_vert1 = -1, chosen_vert2 = -1;
+                bool found_verts_flag = false;
+                for (int j = 0; j < knn.size() - 1; j++) {
+                    for (int m = j + 1; m < knn.size(); m++) {
+                        int vert1 = knn[j], vert2 = knn[m];
+                        if (neighbours[vert1].find(vert2) != neighbours[vert1].end()
+                            && !in_tabu_deleted[vert1] && !in_tabu_deleted[vert2]) {
+                            chosen_vert1 = vert1;
+                            chosen_vert2 = vert2;
+                            found_verts_flag = true;
+                            break;
+                        }
+                    }
+                    if (found_verts_flag) break;
+                }
+
+                if (chosen_vert1 == -1 && chosen_vert2 == -1) {
+                    continue;
+                }
+
+                // qco.remove_from_clique(k);
+                // qco.insert_to_clique(chosen_vert1);
+                // qco.insert_to_clique(chosen_vert2);
+                moved_or_swapped = true;
+
+                remove_from_clique(k, qco, tabu_deleted, in_tabu_deleted);
+                insert_to_clique(chosen_vert1, qco, tabu_added, in_tabu_added);
+                insert_to_clique(chosen_vert2, qco, tabu_added, in_tabu_added);
+                if (qco.q > best_size) {
+                    no_improvement_iters = 0;
+                    best_size = qco.q;
+                    best_solution.clear();
+                    for (int i = 0; i < qco.q; i++) {
+                        best_solution.insert(qco.qco_vec[i]);
+                    }
+                }
             }
+
+            //1-1 swap
+            if (!moved_or_swapped) {
+                for (int i = 0; i < qco.q; i++) {
+                    int k = qco.qco_vec[i];
+                    if (in_tabu_added[k]) continue;
+
+                    unordered_set<int> knn;
+                    for (int j = qco.c; j < qco.qco_vec.size(); j++) {
+                        int u = qco.qco_vec[j];
+                        if (u != k && neighbours[k].find(u) == neighbours[k].end() && qco.tau[u] == 1) {
+                            knn.insert(u);
+                        }
+                    }
+                    if (knn.size() == 0) continue;
+
+                    int new_vert = select_random_candidate(knn, neighbours,
+                    {0.3, 0.5, 0.8, 0.8, 0.8}, in_tabu_deleted);
+                    if (new_vert == -1) continue;
+
+                    remove_from_clique(k, qco, tabu_deleted, in_tabu_deleted);
+                    insert_to_clique(new_vert, qco, tabu_added, in_tabu_added);
+                }
+            }
+            
+
         }
 
-        //swap 1-1 neighborhood
-        int k_idx = floor(dis(gen) * (qco.q));
-        if (k_idx == qco.q) k_idx--;
-        int k = qco.qco_vec[k_idx];
-        // vector<int> nnk1t;
-        // for (int i = 0; i < neighbours.size(); i++) {
-        //     if (qco.tau[i] == 1 && neighbours[k].find(i) == neighbours[k].end()) {
-        //         nnk1t.push_back(i);
-        //     }
-        // }
-        if (in_tabu_add[k]) continue;
-        qco.remove_from_clique(k);
-        int popped_vert = tabu_del.front();
-        tabu_del.pop_front();
-        if (popped_vert != -1) {
-            in_tabu_del[popped_vert] = 0;
-        }
-        tabu_del.push_back(k);
-        in_tabu_del[k] = 1;
-
-
-        // for (int i = 0; i < qco.q; i++) {
-        //     int vertex = qco.qco_vec[i];
-        //     if (!in_tabu_del[vertex]) {
-        //         qco.remove_from_clique(vertex);
-
-        //         tabu_del.push_back(vertex);
-        //         in_tabu_del[vertex] = 1;
-
-        //         int popped_vert = tabu_del.front();
-        //         tabu_del.pop_front();
-        //         if (popped_vert != -1) {
-        //             in_tabu_del[popped_vert] = 0;
-        //         }
-        //     }
-        // }
     }
 
-    return best_size;
+    return best_size;    
+
 }
 
 int main()
@@ -366,6 +435,7 @@ int main()
     "p_hat300-3", "p_hat500-3", "san1000", "sanr200_0.9", 
     "sanr400_0.7"};
     // vector<string> files = {"test"};
+    // vector<string> files = {"brock400_3"};
     
     ofstream fout("clique.txt");
 
@@ -384,34 +454,11 @@ int main()
         // }
         
         clock_t start = clock();
-
+        
         unordered_set<int> clique;
         int best_size = tabu_search(neighbours, clique,
-         4,
-         2, 30000);
-        
-        // cout<<best_size<<endl;
-        // for (auto it = clique.begin(); it != clique.end(); it++) {
-        //     cout<<*it+1<<' ';
-        // }
-        // cout<<endl;
-
-        // QCO qco = QCO(clique, neighbours);
-        // cout<<qco.q<<qco.c<<qco.n;
-
-        // int vv = 1;
-        // qco.insert_to_clique(vv-1);
-        // qco.print_clique();
-
-        // vv = 1;
-        // qco.remove_from_clique(vv-1);
-        // qco.print_clique();
-
-        // vv = 4;
-        // qco.insert_to_clique(vv-1);
-        // qco.print_clique();
-
-        
+        floor((float)neighbours.size() * 0.2),
+        floor((float)neighbours.size() * 0.08), 200, 100);
 
         clock_t end = clock();
         
