@@ -2,6 +2,8 @@
 #include <vector>
 #include <cmath>
 #include <stack>
+#include <random>
+#include <ctime>
 
 class Node {
 public:
@@ -84,6 +86,8 @@ private:
     std::vector<int> A;
 
 public:
+    SparseTable() {}
+
     SparseTable(const std::vector<int>& arr) {
         A = arr;
 
@@ -138,36 +142,201 @@ public:
     std::vector<int> depth;
     std::vector<int> first;
 
+    int block_size;
+
+    std::vector<int> block_mins;
+
+    SparseTable blocks_st;
+
+    std::vector<std::vector<std::vector<int>>> B;
+
     LCA(Node* root, int n_verts) {
+        first.assign(n_verts, -1);
+
         euler_tour(root, euler, depth, first, 0);
 
         //1) разбиение массива depth на блоки и вычисление минимума блоков
-        int block_size = 0.5 * std::__lg(n_verts);
+        block_size = 0.5 * std::__lg(n_verts);
+        // block_size = 4;
         int num_blocks = (depth.size() + block_size - 1) / block_size;
-        std::vector<int> block_mins = get_block_mins(depth, block_size, num_blocks);
+        block_mins = get_block_mins(depth, block_size, num_blocks);
+        std::vector<int> block_mins_values;
+        for (int min_idx : block_mins) {
+            block_mins_values.push_back(depth[min_idx]);
+        }
 
+        //2) nlogn предобработка на массиве минимумов блоков
+        blocks_st = SparseTable(block_mins_values);
+
+        //3) квадратичная предобработка на каждом блоке
+        B.resize(num_blocks);
+        for (int block_idx = 0; block_idx < num_blocks; block_idx++) {
+            int start = block_idx * block_size;
+            int end = (block_idx + 1) * block_size < depth.size() ?  (block_idx + 1) * block_size : depth.size();
+            std::vector<std::vector<int>> cur_block_table(end - start);
+
+            for (int i = start; i < end; i++) {
+                for (int j = i; j < end; j++) {
+                    //cur_block_table[i][j] - индекс минимума в блоке block_idx на отрезке [i; j]
+                    if (i == j) {
+                        cur_block_table[i - start].push_back(j);
+                    } else {
+                        int prev_min = depth[cur_block_table[i - start][j - i - 1]];
+                        if (prev_min < depth[j]) {
+                            cur_block_table[i - start].push_back(cur_block_table[i - start][j - i - 1]);
+                        } else {
+                            cur_block_table[i - start].push_back(j);
+                        }
+                    }
+                }
+            }
+
+            B[block_idx] = cur_block_table;
+
+        }
         //TODO:
         // 2) Выполнить nlogn RMQ на массиве минимумов блоков
         // 3) В каждом блоке Bi вычислить аргмины на отрезках [1; j], [j+1; b]
         // 4) Сделать квадратичную предобработку для каждого блока Bi
         // 5) Реализовать запрос rmq/lca
     }
+
+    //4 реализовать запрос rmq/lca
+    int rmq(int l_, int r_) {
+        if (l_ < 0 || r_ >= first.size()) {
+            std::cerr<<"Index out of range\n";
+            return -1;
+        }
+        int l = std::min(first[l_], first[r_]);
+        int r = std::max(first[l_], first[r_]);
+
+        int block_1 = l / block_size;
+        int block_2 = r / block_size;
+        if (block_1 == block_2) {
+            int left = l - block_1 * block_size;
+            int right = r - l;
+            return euler[B[block_1][left][right]];
+        } else {
+            int block_1_min = B[block_1][l - block_1 * block_size][block_size - 1 - (l - block_1 * block_size)];
+            int block_2_min = B[block_2][0][r - block_2 * block_size];
+            int block12_min = depth[block_1_min] < depth[block_2_min] ? block_1_min : block_2_min;
+            if (block_2 - block_1 > 1) {
+                int min_between_blocks = block_mins[blocks_st.rmq(block_1 + 1, block_2 - 1)];
+                int global_min = depth[block12_min] < depth[min_between_blocks] ? block12_min : min_between_blocks;
+                return euler[global_min];
+            }
+            return euler[block12_min];
+        }
+    }
+
+    int lca(int l_, int r_) {
+        return rmq(l_, r_);
+    }
 };
 
 
-int main() {
-    std::vector<int> vec = {8, 7, 3, 20, 2, 17, 5, 21, 11, 12,25, 25, 25, 25, 25, 25, 25, 25, 25, 25};
-    // Node* root = build_tree(vec);
-    // std::vector<int> euler, depth;
-    // std::vector<int> first(vec.size(), -1);
-    // euler_tour(root, euler, depth, first, 0);
+// std::vector<int> generate_data
 
-    // int n_verts = vec.size();
-    // int block_size = 0.5 * std::__lg(n_verts);
-    // int num_blocks = euler.size() / block_size;
-    // num_blocks = euler.size() % block_size == 0 ? num_blocks : num_blocks + 1;
-    // std::vector<int> block_mins(num_blocks);
-    // std::cout<<n_verts<<' '<<euler.size()<<'\n';
-    // std::cout<<block_size<<' '<<num_blocks<<'\n';
-    // std::cout<<std::__lg(31)<<'\n';
+int nlogn_rmq(std::vector<int> vec, int l, int r) {
+    SparseTable st = SparseTable(vec);
+    return st.rmq(l, r);
+}
+
+int lca_rmq(std::vector<int> vec, int l, int r) {
+    Node* root = build_tree(vec);
+    LCA lca = LCA(root, vec.size());
+    return lca.rmq(l, r);
+}
+
+int naive_rmq(std::vector<int> vec, int l, int r) {
+    int min = vec[l];
+    int min_idx = l;
+    for (int i = l + 1; i <= r; i++) {
+        if (vec[i] < min) {
+            min = vec[i];
+            min_idx = i;
+        }
+    }
+    return min_idx;
+}
+
+std::vector<int> generate_vector() {
+    int min_size = 100000, max_size = 100000;
+    int min_max_value = 100;
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> size_dist(min_size, max_size);
+    std::uniform_int_distribution<> value_dist(-min_max_value, min_max_value);
+
+    int size = size_dist(gen);
+
+    std::vector<int> vec(size);
+    for (int i = 0; i < size; ++i) {
+        vec[i] = value_dist(gen);
+    }
+
+    return vec;
+}
+
+int randint(int l, int r) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> int_dist(l, r);
+
+    int num = int_dist(gen);
+    return num;
+}
+
+int main() {
+    // std::vector<int> vec = {8, 7, 3, 2, 1, 0, -1, 52};
+    int n_iters = 100;
+    double naive_sum = 0, nlogn_sum = 0, lca_sum = 0;
+    for (int i = 0; i < n_iters; i++) {
+        std::vector<int> vec = generate_vector();
+
+        int l = randint(0, vec.size() - 1);
+        int r = randint(l, vec.size() - 1);
+
+        // std::cout<<l<<' '<<r<<'\n';
+
+        clock_t start = clock();
+        int naive_ans = naive_rmq(vec, l, r);
+        clock_t end = clock();
+        double naive_time = static_cast<double>(end - start) / CLOCKS_PER_SEC;
+        naive_sum += naive_time;
+
+        start = clock();
+        int nlogn_ans = nlogn_rmq(vec, l, r);
+        end = clock();
+        double nlogn_time = static_cast<double>(end - start) / CLOCKS_PER_SEC;
+        nlogn_sum += nlogn_time;
+
+        start = clock();
+        int lca_ans = lca_rmq(vec, l, r);
+        end = clock();
+        double lca_time = static_cast<double>(end - start) / CLOCKS_PER_SEC;
+        lca_sum += lca_time;
+
+        if (nlogn_ans != naive_ans || lca_ans != naive_ans || nlogn_ans != lca_ans) {
+            std::cerr<<"Incorrect answers!\n";
+            for (auto num : vec) {
+                std::cout<<num<<' ';
+            }
+            std::cout<<'\n';
+            std::cout<<l<<' '<<r<<'\n';
+            std::cout<<"naive: "<<naive_ans<<'\n';
+            std::cout<<"nlogn: "<<nlogn_ans<<'\n';
+            std::cout<<"lca_ans: "<<lca_ans<<'\n';
+            return -1;
+        }
+    }
+    // std::vector<int> vec = generate_vector();
+    // for (auto num: vec) {
+    //     std::cout<<num<<' ';
+    // }
+    // std::cout<<'\n';
+    std::cout<<"mean naive time: "<<naive_sum / (double)n_iters<<'\n';
+    std::cout<<"mean nlogn time: "<<nlogn_sum / (double)n_iters<<'\n';
+    std::cout<<"mean lca time: "<<lca_sum / (double)n_iters<<'\n';
 }   
