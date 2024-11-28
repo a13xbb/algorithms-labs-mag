@@ -112,7 +112,7 @@ public:
     }
 
     int rmq(int l, int r) {
-        if (l < 0 || r >= A.size()) {
+        if (l < 0 || r >= A.size() || l > r) {
             std::cerr<<"Index out of range\n";
             return -1;
         }
@@ -157,7 +157,6 @@ public:
 
         //1) разбиение массива depth на блоки и вычисление минимума блоков
         block_size = 0.5 * std::__lg(n_verts);
-        // block_size = 4;
         int num_blocks = (depth.size() + block_size - 1) / block_size;
         block_mins = get_block_mins(depth, block_size, num_blocks);
         std::vector<int> block_mins_values;
@@ -201,9 +200,9 @@ public:
         // 5) Реализовать запрос rmq/lca
     }
 
-    //4 реализовать запрос rmq/lca
+    //4 реализация запроса rmq/lca
     int rmq(int l_, int r_) {
-        if (l_ < 0 || r_ >= first.size()) {
+        if (l_ < 0 || r_ >= first.size() || l_ > r_) {
             std::cerr<<"Index out of range\n";
             return -1;
         }
