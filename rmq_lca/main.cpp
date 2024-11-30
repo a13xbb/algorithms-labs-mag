@@ -333,14 +333,10 @@ void check_answers(int n_iters=100, int vec_size=10000) {
 int main() {
     // std::vector<int> vec = {8, 7, 3, 2, 1, 0, -1, 52};
     // check_answers();
-    std::ofstream nlogn_out;
-    nlogn_out.open("nlogn_output.txt");
-    std::ofstream lca_out;
-    lca_out.open("lca_output.txt");
 
     int max_size = 500000;
-    // std::vector<double> nlogn_mean_times;
-    // std::vector<double> lca_mean_times;
+    std::vector<double> nlogn_mean_times;
+    std::vector<double> lca_mean_times;
     for (int vec_size = 500; vec_size <= max_size; vec_size += 500) {
         if (vec_size % 10000 == 0) std::cout<<vec_size<<'\n';
         
@@ -375,20 +371,22 @@ int main() {
         if (nlogn_ans != lca_ans) {
             std::cerr<<"Different answers!";
         }
-        nlogn_out<<nlogn_mean_time<<'\n';
-        lca_out<<lca_mean_time<<'\n';
-        // nlogn_mean_times.push_back(nlogn_mean_time);
-        // lca_mean_times.push_back(lca_mean_time);
+
+        nlogn_mean_times.push_back(nlogn_mean_time);
+        lca_mean_times.push_back(lca_mean_time);
     }
 
+    std::ofstream nlogn_out;
+    nlogn_out.open("nlogn_output.txt");
+    for (const auto& time: nlogn_mean_times) {
+        nlogn_out<<time<<'\n';
+    }
     nlogn_out.close();
+
+    std::ofstream lca_out;
+    lca_out.open("lca_output.txt");
+    for (const auto& time: lca_mean_times) {
+        lca_out<<time<<'\n';
+    }
     lca_out.close();
-
-    // for (const auto& time: nlogn_mean_times) {
-    //     nlogn_out<<time<<'\n';
-    // }
-
-    // for (const auto& time: lca_mean_times) {
-    //     lca_out<<time<<'\n';
-    // }
 }   
