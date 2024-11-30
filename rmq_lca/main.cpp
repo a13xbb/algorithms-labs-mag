@@ -334,7 +334,7 @@ int main() {
     // std::vector<int> vec = {8, 7, 3, 2, 1, 0, -1, 52};
     // check_answers();
 
-    int max_size = 500000;
+    int max_size = 650000;
     std::vector<double> nlogn_mean_times;
     std::vector<double> lca_mean_times;
     for (int vec_size = 500; vec_size <= max_size; vec_size += 500) {
