@@ -4,6 +4,7 @@
 #include <stack>
 #include <random>
 #include <ctime>
+#include <fstream>
 
 class Node {
 public:
@@ -193,11 +194,6 @@ public:
             B[block_idx] = cur_block_table;
 
         }
-        //TODO:
-        // 2) Выполнить nlogn RMQ на массиве минимумов блоков
-        // 3) В каждом блоке Bi вычислить аргмины на отрезках [1; j], [j+1; b]
-        // 4) Сделать квадратичную предобработку для каждого блока Bi
-        // 5) Реализовать запрос rmq/lca
     }
 
     //4 реализация запроса rmq/lca
@@ -259,16 +255,16 @@ int naive_rmq(std::vector<int> vec, int l, int r) {
     return min_idx;
 }
 
-std::vector<int> generate_vector() {
+std::vector<int> generate_vector(int size) {
     int min_size = 100000, max_size = 100000;
     int min_max_value = 100;
 
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> size_dist(min_size, max_size);
+    // std::uniform_int_distribution<> size_dist(min_size, max_size);
     std::uniform_int_distribution<> value_dist(-min_max_value, min_max_value);
 
-    int size = size_dist(gen);
+    // int size = size_dist(gen);
 
     std::vector<int> vec(size);
     for (int i = 0; i < size; ++i) {
@@ -287,12 +283,10 @@ int randint(int l, int r) {
     return num;
 }
 
-int main() {
-    // std::vector<int> vec = {8, 7, 3, 2, 1, 0, -1, 52};
-    int n_iters = 100;
+void check_answers(int n_iters=100, int vec_size=10000) {
     double naive_sum = 0, nlogn_sum = 0, lca_sum = 0;
     for (int i = 0; i < n_iters; i++) {
-        std::vector<int> vec = generate_vector();
+        std::vector<int> vec = generate_vector(vec_size);
 
         int l = randint(0, vec.size() - 1);
         int r = randint(l, vec.size() - 1);
@@ -327,15 +321,70 @@ int main() {
             std::cout<<"naive: "<<naive_ans<<'\n';
             std::cout<<"nlogn: "<<nlogn_ans<<'\n';
             std::cout<<"lca_ans: "<<lca_ans<<'\n';
-            return -1;
+            return;
         }
     }
-    // std::vector<int> vec = generate_vector();
-    // for (auto num: vec) {
-    //     std::cout<<num<<' ';
-    // }
-    // std::cout<<'\n';
     std::cout<<"mean naive time: "<<naive_sum / (double)n_iters<<'\n';
     std::cout<<"mean nlogn time: "<<nlogn_sum / (double)n_iters<<'\n';
     std::cout<<"mean lca time: "<<lca_sum / (double)n_iters<<'\n';
+}
+
+
+int main() {
+    // std::vector<int> vec = {8, 7, 3, 2, 1, 0, -1, 52};
+    // check_answers();
+    int max_size = 1000000;
+    std::vector<double> nlogn_mean_times;
+    std::vector<double> lca_mean_times;
+    for (int vec_size = 500; vec_size <= max_size; vec_size += 500) {
+        if (vec_size % 10000 == 0) std::cout<<vec_size<<'\n';
+        
+        std::vector<int> vec = generate_vector(vec_size);
+
+        int l = randint(0, vec.size() - 1);
+        int r = randint(l, vec.size() - 1);
+
+        double nlogn_sum_time = 0;
+        int nlogn_ans;
+        int n_tries = 1;
+        for (int i = 0; i < n_tries; i++) {
+            clock_t start = clock();
+            nlogn_ans = nlogn_rmq(vec, l, r);
+            clock_t end = clock();
+            double nlogn_time = static_cast<double>(end - start) / CLOCKS_PER_SEC;
+            nlogn_sum_time += nlogn_time;
+        }
+        double nlogn_mean_time = nlogn_sum_time / n_tries;
+
+        double lca_sum_time = 0;
+        int lca_ans;
+        for (int i = 0; i < n_tries; i++) {
+            clock_t start = clock();
+            lca_ans = lca_rmq(vec, l, r);
+            clock_t end = clock();
+            double lca_time = static_cast<double>(end - start) / CLOCKS_PER_SEC;
+            lca_sum_time += lca_time;
+        }
+        double lca_mean_time = lca_sum_time / n_tries;
+
+        if (nlogn_ans != lca_ans) {
+            std::cerr<<"Different answers!";
+        }
+
+        nlogn_mean_times.push_back(nlogn_mean_time);
+        lca_mean_times.push_back(lca_mean_time);
+    }
+
+    std::ofstream nlogn_out;
+    nlogn_out.open("nlogn_output.txt");
+    std::ofstream lca_out;
+    lca_out.open("lca_output.txt");
+
+    for (const auto& time: nlogn_mean_times) {
+        nlogn_out<<time<<'\n';
+    }
+
+    for (const auto& time: lca_mean_times) {
+        lca_out<<time<<'\n';
+    }
 }   
