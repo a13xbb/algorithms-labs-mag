@@ -381,6 +381,9 @@ int main() {
         // lca_mean_times.push_back(lca_mean_time);
     }
 
+    nlogn_out.close();
+    lca_out.close();
+
     // for (const auto& time: nlogn_mean_times) {
     //     nlogn_out<<time<<'\n';
     // }
